@@ -184,7 +184,7 @@ func main() {
 	if len(listeners) != 1 {
 		panic("Unexpected number of socket activation fds")
 	}
-	db, err := InitDB("webmentions.db")
+	db, err := InitDB("/webmentions/webmentions.db")
 	if err != nil {
 		log.Fatalf("failed to initialize database: %v", err)
 	}
