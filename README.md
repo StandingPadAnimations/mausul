@@ -66,7 +66,7 @@ URL is asynchronous, then does the receiver:
 - Return `400 Bad Request` to indicate the Webmention was not successful?
     - If so, what happens when a check is performed asynchronously?
 
-"Synchronous" checks a little easier to interpret: checks that aren't
+"Synchronous" checks are a little easier to interpret: checks that aren't
 performed in a background thread. For this implementation, that would
 be:
 
