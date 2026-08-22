@@ -1,10 +1,11 @@
 # Webmentions
 
-Webmentions implementation in Python.
+Webmentions implementation in ~~Python~~ Go.
 
 ## Why
 
 Because I wanted to try implementing it myself.
+Also I needed an excuse to learn Go.
 
 ## Installation Notes
 
@@ -27,7 +28,7 @@ of inactivity. This is normal, SystemD Socket Activation
 will handle bringing it back when needed.
 
 Also, the accepted target domains and routes are hardcoded.
-I might expose these in a TOML configuration in the future,
+I might expose these in a JSON/TOML configuration in the future,
 but do be aware of that. Same with database paths, which
 are intended to be used in a container. Again, maybe I'll
 write configuration for this in the future, but for now, be
@@ -36,7 +37,7 @@ aware of that.
 ## License
 
 ```
-Copyright (C) Maryam Stellamaris (Mahid Sheikh)
+Copyright (C) 2026 Maryam Stellamaris
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
