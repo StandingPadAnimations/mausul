@@ -1,0 +1,9 @@
+[Container]
+Image=webmentions:latest
+Volume=%h/webmentions:/webmentions:Z
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
