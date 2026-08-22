@@ -48,20 +48,20 @@ it states:
 > - `source` URL not found.
 > - `source` URL does not contain a link to the `target` URL.
 
-These two introduce a gray-area: if a reciever processes requests
+These two introduce a gray-area: if a receiver processes requests
 _asynchronously_, while not returning a status URL, then it _must_
-reply with an `HTTP 202 Accepted` response. However, if the same
-reciever finds a Webmention not successful because of something the
-sender did, then it _must_ return a `400 Bad Request` response. In
-addition, the spec _specifically_ mentions not finding the target
-URL in the content of the source URL. However, if the source URL is processed
-asynchronously (including parsing of HTML to validate the presence
-of a link to the target URL in the content of the source URL), an
-intersting question arises: if the reciever finds the source URL to
-_not_ contain a link to target URL, but the processing of the content
-of the source URL is asynchronous, then does the reciever:
+return a `HTTP 202 Accepted` response. However, if the same receiver
+finds a Webmention not successful because of something the sender did,
+then it _must_ return a `400 Bad Request` response. In addition, the
+spec _specifically_ mentions not finding the target URL in the content
+of the source URL. However, if the source URL is processed asynchronously
+(including parsing of HTML to validate the presence of a link to the
+target URL in the content of the source URL), an intersting question arises:
+if the receiver finds the content of the source URL to _not_ contain a
+link to the target URL, but the processing of the content of the source
+URL is asynchronous, then does the receiver:
 
-- Return `202 Accepted` to indicate the Webmention was recieved (successful or not)?
+- Return `202 Accepted` to indicate the Webmention was received (successful or not)?
 - Return `400 Bad Request` to indicate the Webmention was not successful?
     - If so, what happens when a check is performed asynchronously?
 
@@ -74,7 +74,7 @@ be:
 - Validating `source` and `target` are distinct URLs
 - Validating `target` accepts Webmentions
 
-These checks are performed right after recieving the request, and
+These checks are performed right after receiving the request, and
 before creating a separate goroutine. However, by nature of creating
 a goroutine for processing the other checks, we cannot return a `400 Bad
 Request` for checks like:
