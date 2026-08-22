@@ -64,7 +64,7 @@ URL is asynchronous, then does the receiver:
 - Return `202 Accepted` to indicate the Webmention was received (regardless
   of whether validation is successful or not)?
 - Return `400 Bad Request` to indicate the Webmention was not successful?
-    - If so, what happens when a check is performed asynchronously?
+    - If so, does it not return `202 Accepted`?
 
 "Synchronous" checks are a little easier to interpret: checks that aren't
 performed in a background thread. For this implementation, that would
