@@ -1,1 +1,4 @@
 webmentions/
+webmention_server
+*.db
+*.db-*
