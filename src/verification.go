@@ -40,6 +40,14 @@ const maxFetchSizeBytes = 1024 * 1024 // 1MB
 const maxTimeout = 10 * time.Second
 const userAgent = "Maryam's Webmention-Receiver/1.0"
 
+type VerificationResult int
+
+const (
+	StatusKeep VerificationResult = iota
+	StatusDelete
+	StatusError
+)
+
 func IsAllowedTarget(u *url.URL) bool {
 	host := strings.ToLower(u.Hostname())
 	return allowedTargetDomains[host]
@@ -132,17 +140,31 @@ func ContainsTargetLink(r io.Reader, target string) (bool, error) {
 	}
 }
 
-func VerifyWebmention(sourceURL, targetURL *url.URL) (bool, error) {
+func VerifyWebmention(sourceURL, targetURL *url.URL) (VerificationResult, error) {
 	body, statusCode, err := FetchSourceHTML(sourceURL.String())
 	if err != nil {
-		return false, err
+		return StatusError, err
 	}
 	defer body.Close()
 
+	if statusCode == http.StatusGone {
+		return StatusDelete, nil
+	}
+
 	if statusCode != http.StatusOK {
-		return false, fmt.Errorf("Source returned status %d", statusCode)
+		return StatusError, fmt.Errorf("Source returned status %d", statusCode)
 	}
 
 	limitedReader := io.LimitReader(body, maxFetchSizeBytes)
-	return ContainsTargetLink(limitedReader, targetURL.String())
+	hasLink, err := ContainsTargetLink(limitedReader, targetURL.String())
+	if err != nil {
+		return StatusError, err
+	}
+
+	if hasLink {
+		return StatusKeep, nil
+	}
+
+	// Page exists, target link not present on page
+	return StatusDelete, nil
 }

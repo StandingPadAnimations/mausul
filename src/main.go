@@ -167,12 +167,12 @@ func (a *App) webmentionHandler(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 
 		log.Printf("[worker] verifying mention: %s -> %s", sourceURL.String(), targetURL.String())
-		valid, err := VerifyWebmention(sourceURL, targetURL)
+		status, err := VerifyWebmention(sourceURL, targetURL)
 		if err != nil {
 			log.Printf("[worker] failed to verify mention: %s", err)
 			return
 		}
-		if valid {
+		if status == StatusDelete {
 			log.Printf("[worker] mention verified: %s -> %s", sourceURL.String(), targetURL.String())
 			if err := SaveWebmention(ctx, a.db, sourceURL.String(), targetURL.String()); err != nil {
 				log.Printf("[worker] error saving to database: %v", err)
@@ -261,12 +261,12 @@ func revalidate() {
 			continue
 		}
 
-		valid, err := VerifyWebmention(sourceURL, targetURL)
+		status, err := VerifyWebmention(sourceURL, targetURL)
 		if err != nil {
 			log.Printf("[revalidate] fetch/verification error for %s -> %s: %v", mention.Source, mention.Target, err)
 			continue
 		}
-		if !valid {
+		if status == StatusDelete {
 			log.Printf("[revalidate] link removed, deleting: %s -> %s", mention.Source, mention.Target)
 			if err := DeleteWebmention(ctx, db, sourceURL.String(), targetURL.String()); err != nil {
 				log.Printf("[revalidate] error deleting from database: %v", err)
