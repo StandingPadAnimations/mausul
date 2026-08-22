@@ -198,7 +198,7 @@ func main() {
 	getwebmentionsLimiter := newIPRateLimiter(rate.Every(60*time.Minute), 3)
 	mux.HandleFunc("/get_webmentions", getwebmentionsLimiter.limitMiddleware(app.getWebmentionsHandler))
 
-	idleWatcher := newIdleWatcher(5 * time.Second)
+	idleWatcher := newIdleWatcher(5 * time.Minute)
 	server := &http.Server{
 		Handler: idleWatcher.Middleware(mux),
 	}
