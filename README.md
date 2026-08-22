@@ -61,7 +61,8 @@ if the receiver finds the content of the source URL to _not_ contain a
 link to the target URL, but the processing of the content of the source
 URL is asynchronous, then does the receiver:
 
-- Return `202 Accepted` to indicate the Webmention was received (successful or not)?
+- Return `202 Accepted` to indicate the Webmention was received (regardless
+  of whether validation is successful or not)?
 - Return `400 Bad Request` to indicate the Webmention was not successful?
     - If so, what happens when a check is performed asynchronously?
 
