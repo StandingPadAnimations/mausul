@@ -1,4 +1,4 @@
-# Copyright (C) Maryam Stellamaris (Mahid Sheikh)
+# Copyright (C) 2026 Maryam Stellamaris (Mahid Sheikh)
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -17,13 +17,11 @@ import asyncio
 from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
 import html
-import ipaddress
 import os
 import signal
 import time
-import socket
 from typing import Annotated, final
-from urllib.parse import urldefrag, urljoin, urlparse
+from urllib.parse import urlparse
 
 import asqlite
 from fastapi import (
@@ -39,26 +37,23 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 import httpx
 from pydantic import HttpUrl
-from selectolax.parser import HTMLParser
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from . import db_operations
+from . import validation
+
 # Limit of 1 MB to avoid memory issues
 MAX_RESPONSE_SIZE = 1_048_576
 FETCH_TIMEOUT = 5.0
 DB_FILE = "/webmentions/webmentions.db"
-ALLOWED_TARGET_DOMAINS = {
-    "standingpad.org",
-    "www.standingpad.org",
-    "localhost",
-    "127.0.0.1",
-}
-ALLOWED_PATH_PREFIX = "/posts/"
 
 # Automatic idle shutdown
 IDLE_TIMEOUT_SECONDS = 300
+
+USER_AGENT = "Maryam's Webmention-Receiver/1.0"
 
 db_pool: asqlite.Pool | None = None
 
@@ -85,149 +80,48 @@ class IdleTimeoutMiddleware(BaseHTTPMiddleware):
                 break
 
 
-async def init_db() -> None:
-    assert db_pool is not None
-    async with db_pool.acquire() as conn:
-        _ = await conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS webmentions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                source TEXT NOT NULL,
-                target TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(source, target)
-            );
-            """
-        )
-        _ = await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_source ON webmentions(target)"
-        )
-        await conn.commit()
-
-
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     global db_pool
     async with asqlite.create_pool(DB_FILE) as pool:
         db_pool = pool
-        await init_db()
+        await db_operations.init_db(db_pool)
         yield
     db_pool = None
 
 
-def is_allowed_url(url: str) -> bool:
-    """Check if the URL is the proper protocol, with a hostname, and is on a public IP address."""
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        return False
-
-    hostname = parsed.hostname
-    if not hostname:
-        return False
-
-    try:
-        ip_str = socket.gethostbyname(hostname)
-        ip = ipaddress.ip_address(ip_str)
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-            return False
-    except socket.gaierror, ValueError:
-        return False
-    return True
-
-
-def is_allowed_target(url: str) -> bool:
-    """Check if the URL is allowed to be a target for a Webmention."""
-    parsed = urlparse(url)
-    return parsed.netloc.lower() in ALLOWED_TARGET_DOMAINS
-
-
-def target_accepts_webmentions(target_url: str) -> bool:
-    parsed = urlparse(target_url)
-    return parsed.path.startswith(ALLOWED_PATH_PREFIX)
-
-
-def normalize_url(url: str) -> str:
-    """Defrag the URL and strip trailing slashes."""
-    defragged, _ = urldefrag(url)
-    return defragged.rstrip("/")
-
-
-def contains_target_link(html_content: str, base_url: str, target_url: str) -> bool:
-    """Check if the HTML content contains the target URL"""
-    tree = HTMLParser(html_content)
-    target_clean = normalize_url(target_url)
-
-    for node in tree.css("a[href]"):
-        raw_href = node.attributes.get("href")
-        if not raw_href:
-            continue
-
-        resolved_href = normalize_url(urljoin(base_url, raw_href))
-        if resolved_href == target_clean:
-            return True
-    return False
-
-
-async def store_webmention(source: str, target: str) -> None:
-    """Store the Webmention in the database."""
-    if db_pool is None:
-        return
-    async with db_pool.acquire() as conn:
-        _ = await conn.execute(
-            """
-            INSERT INTO webmentions (source, target)
-            VALUES (?, ?)
-            ON CONFLICT (source, target) DO NOTHING
-            """,
-            (source, target),
-        )
-        await conn.commit()
-
-
 async def verify_and_store_webmention(source: str, target: str) -> None:
     """Verify the URL, and store or remove the Webmention accordingly."""
-    if not is_allowed_url(source):
+    if db_pool is None:
+        return
+    if not validation.is_allowed_url(source):
         return
     try:
         async with httpx.AsyncClient(
             timeout=FETCH_TIMEOUT,
             follow_redirects=True,
             max_redirects=3,
-            headers={"User-Agent": "Webmention-Receiver/1.0 (Verification Bot)"},
+            headers={"User-Agent": USER_AGENT},
         ) as client:
             response = await client.get(source)
-
             if response.status_code in (410, 404):
                 print(f"{source} returned {response.status_code}, removing if present")
-                await remove_webmention(source, target)
+                await db_operations.remove_webmention(db_pool, source, target)
                 return
             elif response.status_code != 200:
                 return
-
             if len(response.content) > MAX_RESPONSE_SIZE:
                 return
-
             html_text = response.text
     except httpx.HTTPError, Exception:
         return
-
-    has_link = contains_target_link(html_text, source, target)
+    has_link = validation.contains_target_link(html_text, source, target)
     if has_link:
         print(f"{source} has link to {target}, storing as Webmention!")
-        await store_webmention(source, target)
+        await db_operations.store_webmention(db_pool, source, target)
     else:
         print(f"{source} does not have link to {target}, deleting if present!")
-        await remove_webmention(source, target)
-
-
-async def remove_webmention(source: str, target: str) -> None:
-    if db_pool is None:
-        return
-    async with db_pool.acquire() as conn:
-        _ = await conn.execute(
-            "DELETE FROM webmentions WHERE source = ? AND target = ?", (source, target)
-        )
-        await conn.commit()
+        await db_operations.remove_webmention(db_pool, source, target)
 
 
 limiter = Limiter(key_func=get_remote_address)
@@ -274,12 +168,12 @@ async def webmention(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Source and target URLs cannot be the same",
         )
-    elif not is_allowed_target(target_str):
+    elif not validation.is_allowed_target(target_str):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Target URL {target_str} is not allowed.",
         )
-    elif not target_accepts_webmentions(target_str):
+    elif not validation.target_accepts_webmentions(target_str):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Target URL {target_str} does not accept webmentions.",
@@ -300,7 +194,7 @@ async def get_webmentions_html(
         )
 
     target_str = str(target)
-    if not is_allowed_target(target_str):
+    if not validation.is_allowed_target(target_str):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Target URL {target_str} is not allowed.",
