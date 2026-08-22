@@ -62,6 +62,7 @@ IDLE_TIMEOUT_SECONDS = 300
 
 db_pool: asqlite.Pool | None = None
 
+
 # Middleware to shut down on idle,
 # since it is intended to run this
 # program with SystemD Socket Activaion
@@ -82,6 +83,7 @@ class IdleTimeoutMiddleware(BaseHTTPMiddleware):
             if time.time() - self.last_activity > IDLE_TIMEOUT_SECONDS:
                 os.kill(os.getpid(), signal.SIGTERM)
                 break
+
 
 async def init_db() -> None:
     assert db_pool is not None
@@ -233,6 +235,7 @@ app = FastAPI(lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(IdleTimeoutMiddleware)
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(
