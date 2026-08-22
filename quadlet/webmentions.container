@@ -1,6 +1,6 @@
 [Container]
 Image=webmentions:latest
-Volume=%h/webmentions:/webmentions:Z,U
+Volume=%h/webmentions:/webmentions:Z
 
 [Service]
 Restart=on-failure
