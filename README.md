@@ -6,15 +6,32 @@ Webmentions implementation in Python.
 
 Because I wanted to try implementing it myself.
 
-## Installation
+## Installation Notes
+
+> [!WARNING]
+> I do not recommend using this, as it was designed
+> around my personal website. That said, here's
+> some information for those that _really_ want to
+> use this.
 
 Easiest way is to build the container file directly
 from source. Podman is the only officially supported
-platform.
+platform (as in, _**this will not work with Docker**_),
+since it depends on SystemD Socket Activation.
 
 When using containers, the service must be exposed using
-SystemD Socket Activation. This is because that is preferred
-in rootless Podman for networking performance.
+SystemD Socket Activation, as that is preferred when
+using rootless Podman for network performance reasons.
+Note that the container will terminate after five minutes
+of inactivity. This is normal, SystemD Socket Activation
+will handle bringing it back when needed.
+
+Also, the accepted target domains and routes are hardcoded.
+I might expose these in a TOML configuration in the future,
+but do be aware of that. Same with database paths, which
+are intended to be used in a container. Again, maybe I'll
+write configuration for this in the future, but for now, be
+aware of that.
 
 ## License
 
