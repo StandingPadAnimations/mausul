@@ -13,12 +13,16 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import asyncio
 from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
 import html
 import ipaddress
+import os
+import signal
+import time
 import socket
-from typing import Annotated
+from typing import Annotated, final
 from urllib.parse import urldefrag, urljoin, urlparse
 
 import asqlite
@@ -39,6 +43,7 @@ from selectolax.parser import HTMLParser
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.middleware.base import BaseHTTPMiddleware
 
 # Limit of 1 MB to avoid memory issues
 MAX_RESPONSE_SIZE = 1_048_576
@@ -52,8 +57,31 @@ ALLOWED_TARGET_DOMAINS = {
 }
 ALLOWED_PATH_PREFIX = "/posts/"
 
+# Automatic idle shutdown
+IDLE_TIMEOUT_SECONDS = 300
+
 db_pool: asqlite.Pool | None = None
 
+# Middleware to shut down on idle,
+# since it is intended to run this
+# program with SystemD Socket Activaion
+@final
+class IdleTimeoutMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app: FastAPI):
+        super().__init__(app)
+        self.last_activity = time.time()
+        _ = asyncio.create_task(self._watchdog())
+
+    async def dispatch(self, request: Request, call_next):
+        self.last_activity = time.time()
+        return await call_next(request)
+
+    async def _watchdog(self):
+        while True:
+            await asyncio.sleep(15)
+            if time.time() - self.last_activity > IDLE_TIMEOUT_SECONDS:
+                os.kill(os.getpid(), signal.SIGTERM)
+                break
 
 async def init_db() -> None:
     assert db_pool is not None
@@ -204,7 +232,7 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
+app.add_middleware(IdleTimeoutMiddleware)
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(
