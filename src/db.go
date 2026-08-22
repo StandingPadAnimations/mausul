@@ -38,6 +38,10 @@ func InitDB(dbPath string) (*sql.DB, error) {
 	}
 	db.SetMaxOpenConns(1)
 
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
 	pragmas := []string{
 		"PRAGMA journal_mode=WAL;",
 		"PRAGMA busy_timeout=5000;",
