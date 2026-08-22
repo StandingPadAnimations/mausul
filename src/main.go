@@ -179,6 +179,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer listeners[0].Close()
+
 	if len(listeners) != 1 {
 		panic("Unexpected number of socket activation fds")
 	}
@@ -189,16 +191,24 @@ func main() {
 	defer db.Close()
 	app := &App{db: db}
 
-	http.HandleFunc("/", homeHandler)
-
+	mux := http.NewServeMux()
 	webmentionLimiter := newIPRateLimiter(rate.Every(10*time.Minute), 3)
-	http.HandleFunc("/webmention", webmentionLimiter.limitMiddleware(app.webmentionHandler))
+	mux.HandleFunc("/webmention", webmentionLimiter.limitMiddleware(app.webmentionHandler))
 
 	getwebmentionsLimiter := newIPRateLimiter(rate.Every(60*time.Minute), 3)
-	http.HandleFunc("/get_webmentions", getwebmentionsLimiter.limitMiddleware(app.getWebmentionsHandler))
+	mux.HandleFunc("/get_webmentions", getwebmentionsLimiter.limitMiddleware(app.getWebmentionsHandler))
 
-	log.Println("Server is running on port :8000")
-	http.Serve(listeners[0], nil)
+	idleWatcher := newIdleWatcher(5 * time.Second)
+	server := &http.Server{
+		Handler: idleWatcher.Middleware(mux),
+	}
+
+	go idleWatcher.StartWatchdog(context.Background(), server)
+	log.Println("Server started on socket activation fd")
+	if err := server.Serve(listeners[0]); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("HTTP server error: %v", err)
+	}
+	log.Println("Server exited cleanly on idle")
 }
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
