@@ -1,6 +1,10 @@
 # Webmentions
 
 Webmentions implementation in ~~Python~~ Go.
+Compliant with the [W3C Webmentions Spec](https://www.w3.org/TR/webmention/).
+
+This uses SQLite as the underlying database,
+to keep things minimal.
 
 ## Why
 

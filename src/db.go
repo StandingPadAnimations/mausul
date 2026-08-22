@@ -19,6 +19,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -32,27 +33,22 @@ type Webmention struct {
 }
 
 func InitDB(dbPath string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	params := url.Values{}
+	params.Add("_pragma", "busy_timeout(5000)")
+	params.Add("_pragma", "journal_mode(WAL)")
+	params.Add("_pragma", "synchronous(NORMAL)")
+	params.Add("_pragma", "foreign_keys(ON)")
+	params.Add("_txlock", "immediate")
+	dsn := fmt.Sprintf("%s?%s", dbPath, params.Encode())
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
-	db.SetMaxOpenConns(1)
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
 
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
-	}
-
-	pragmas := []string{
-		"PRAGMA journal_mode=WAL;",
-		"PRAGMA busy_timeout=5000;",
-		"PRAGMA synchronous=NORMAL;",
-		"PRAGMA foreign_keys=ON;",
-	}
-
-	for _, pragma := range pragmas {
-		if _, err := db.Exec(pragma); err != nil {
-			return nil, fmt.Errorf("failed to set pragma %q: %w", pragma, err)
-		}
 	}
 
 	schema := `
@@ -97,6 +93,32 @@ func GetWebmentionsByTarget(ctx context.Context, db *sql.DB, target string) ([]*
 		ORDER BY created_at ASC;
 	`
 	rows, err := db.QueryContext(ctx, query, target)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query webmentions: %w", err)
+	}
+	defer rows.Close()
+
+	var results []*Webmention
+	for rows.Next() {
+		var webmention Webmention
+		if err := rows.Scan(&webmention.ID, &webmention.Source, &webmention.Target, &webmention.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan webmention: %w", err)
+		}
+		results = append(results, &webmention)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to fetch all webmentions: %w", err)
+	}
+	return results, nil
+}
+
+func GetAllWebmentions(ctx context.Context, db *sql.DB) ([]*Webmention, error) {
+	query := `
+		SELECT id, source, target, created_at
+		FROM webmentions
+		ORDER BY created_at ASC;
+	`
+	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query webmentions: %w", err)
 	}
