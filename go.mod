@@ -1,4 +1,4 @@
-module webmentions
+module mausul
 
 go 1.26.6
 

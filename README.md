@@ -1,7 +1,7 @@
-# Webmentions
+# Mausul
 
-Webmentions implementation in ~~Python~~ Go.
-Compliant with the [W3C Webmentions Spec](https://www.w3.org/TR/webmention/).
+Webmentions implementation in Go. Compliant
+with the [W3C Webmentions Spec](https://www.w3.org/TR/webmention/).
 
 This uses SQLite as the underlying database,
 to keep things minimal.
@@ -128,7 +128,7 @@ WEBMENTIONS_DB_PATH=/webmentions/webmentions.db
 ## License
 
 ```
-Copyright (C) 2026 Maryam Stellamaris
+Copyright (C) 2026 Maryam Stellamaris <maryam@standingpad.org>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by

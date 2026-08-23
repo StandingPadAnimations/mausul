@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Maryam Stellamaris
+// Copyright (C) 2026 Maryam Stellamaris <maryam@standingpad.org>
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
