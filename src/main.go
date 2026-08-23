@@ -184,7 +184,7 @@ func serve(c *WebmentionsConfig) {
 	if len(listeners) != 1 {
 		panic("Unexpected number of socket activation fds")
 	}
-	db, err := InitDB("/webmentions/webmentions.db")
+	db, err := InitDB(c.DbPath)
 	if err != nil {
 		log.Fatalf("failed to initialize database: %v", err)
 	}
@@ -213,7 +213,7 @@ func serve(c *WebmentionsConfig) {
 }
 
 func revalidate(c *WebmentionsConfig) {
-	db, err := InitDB("/webmentions/webmentions.db")
+	db, err := InitDB(c.DbPath)
 	if err != nil {
 		log.Fatalf("failed to initialize database: %v", err)
 	}

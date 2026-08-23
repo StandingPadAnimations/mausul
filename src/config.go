@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ type WebmentionsConfig struct {
 	UserAgent         string
 	MaxTimeout        time.Duration
 	MaxFetchSizeBytes int64
+	DbPath            string
 }
 
 func newConfig() (*WebmentionsConfig, error) {
@@ -45,5 +47,11 @@ func newConfig() (*WebmentionsConfig, error) {
 		return nil, err
 	}
 	config.MaxFetchSizeBytes = int64(maxFetchSizeBytes)
+
+	dbPath := os.Getenv("WEBMENTIONS_DB_PATH")
+	if dbPath == "" {
+		return nil, errors.New("WEBMENTIONS_DB_PATH environment variable must be set")
+	}
+	config.DbPath = dbPath
 	return config, nil
 }
