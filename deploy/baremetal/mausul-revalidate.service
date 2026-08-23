@@ -1,0 +1,13 @@
+[Unit]
+Description=Mausul revalidation service
+
+[Service]
+Type=oneshot
+ExecStart=%h/mausul revalidate
+EnvironmentFile=%h/mausul.env
+Restart=no
+
+MemoryHigh=96M
+MemoryMax=128M
+CPUQuota=100%
+TasksMax=32

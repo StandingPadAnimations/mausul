@@ -1,5 +1,6 @@
 [Unit]
 Description=Mausul receiver service
+After=network.target
 
 [Container]
 Image=mausul:latest
@@ -8,6 +9,12 @@ Volume=%h/webmentions:/webmentions:z
 
 [Service]
 Restart=on-failure
+RestartSec=5
+
+MemoryHigh=96M
+MemoryMax=128M
+CPUQuota=100%
+TasksMax=32
 
 [Install]
 WantedBy=default.target

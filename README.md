@@ -11,35 +11,75 @@ to keep things minimal.
 Because I wanted to try implementing it myself.
 Also I needed an excuse to learn Go.
 
-## Installation Notes
+## Installation
+
+There are two options to run Mausul: Podman, or bare
+metal. In both cases, SystemD is _required_, as Mausul
+takes advantage of SystemD Socket Activation to only
+start-up when needed, and exit when idle.
+
+In either case, Mausul is intended to be ran as a user
+service, not a system service.
+
+Both Podman and bare metal setups use the same `mausul.socket`
+and `mausul-revalidate.timer` files defined in `deploy/systemd`.
+Regardless of which route is taken, those file are needed.
+
+### Building Podman Image
+
+To build the Podman image:
 
 > [!WARNING]
-> This project was designed around my personal website,
-> so I cannot guarantee easy deployment. That said, here's
-> some important details.
+> Docker _is not supported_. Mausul uses SystemD Socket
+> Activation, which is _not supported_ in Docker. Podman
+> is _required_.
 
-Easiest way is to build the container file directly
-from source. Podman is the only officially supported
-platform (as in, _**this will not work with Docker**_),
-since it depends on SystemD Socket Activation.
+```sh
+podman build -t mausul:latest .
+```
 
-When using containers, the service must be exposed using
-SystemD Socket Activation, as that is preferred when
-using rootless Podman for network performance reasons.
-Note that the container will terminate after five minutes
-of inactivity. This is normal, SystemD Socket Activation
-will handle bringing it back when needed.
+Then copy the files in `deply/quadlet` and `deploy/systemd`
+to the correct locations.
 
-As for configuration, the following environment variables
-can be set:
+### Building Bare Metal
+
+To build just the binary:
+
+```sh
+go build -o mausul ./src
+```
+
+Then copy the files in `deply/baremetal` and `deploy/systemd`
+to the correct locations.
+
+### Configuration
+
+With the default SystemD/Quadlet configuration, an environment
+file located at `/home/mausul_user/mausul.env` is required, and
+contain the following environment variables:
 
 ```
-WEBMENTIONS_ALLOWED_TARGETS=example.com,www.example.com
-WEBMENTIONS_USER_AGENT=Webmention-Receiver/1.0
-WEBMENTIONS_MAX_FETCH_SIZE_BYTES=1048576
-WEBMENTIONS_MAX_TIMEOUT=10s
-WEBMENTIONS_DB_PATH=/webmentions/webmentions.db
+MAUSUL_ALLOWED_TARGETS=example.com,www.example.com
+MAUSUL_USER_AGENT=Mausul Webmention-Receiver Bot/1.0
+MAUSUL_MAX_FETCH_SIZE_BYTES=1048576
+MAUSUL_MAX_TIMEOUT=10s
+MAUSUL_DB_PATH=/webmentions/webmentions.db
 ```
+
+### Some Notes on SystemD Configuration
+
+The default SystemD configurations in this repository have
+a couple of parameters that may be tweaked. In both the
+Quadlet and bare metal setups:
+
+- Memory usage is limited to 128M
+    - 96M is considered, "high"
+- Tasks/PIDs are limited to 32
+- CPU Quota is set to 100%
+    - It's _highly_ unlikely to ever be an issue, but
+      this may be configured just in case
+
+This may be configured to your liking.
 
 ## License
 

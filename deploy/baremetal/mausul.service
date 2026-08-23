@@ -1,0 +1,17 @@
+[Unit]
+Description=Mausul receiver service
+After=network.target
+
+[Service]
+ExecStart=%h/mausul
+EnvironmentFile=%h/mausul.env
+Restart=on-failure
+RestartSec=5
+
+MemoryHigh=96M
+MemoryMax=128M
+CPUQuota=100%
+TasksMax=32
+
+[Install]
+WantedBy=default.target

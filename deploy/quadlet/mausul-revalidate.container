@@ -9,3 +9,8 @@ Exec=revalidate
 
 [Service]
 Restart=no
+
+MemoryHigh=96M
+MemoryMax=128M
+CPUQuota=100%
+TasksMax=32

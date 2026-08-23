@@ -3,6 +3,7 @@ Description=Mausul Receiver Socket
 
 [Socket]
 ListenStream=127.0.0.1:8060
+ListenStream=[::1]:8060
 SocketMode=0666
 
 [Install]
