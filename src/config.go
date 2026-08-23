@@ -34,12 +34,12 @@ type WebmentionsConfig struct {
 func newConfig() (*WebmentionsConfig, error) {
 	config := &WebmentionsConfig{
 		AllowedTargets:    map[string]bool{},
-		UserAgent:         "Maryam's Webmention-Receiver/1.0",
+		UserAgent:         "Mausul Webmention-Receiver Bot/1.0",
 		MaxTimeout:        10 * time.Second,
 		MaxFetchSizeBytes: 1024 * 1024, // 1MB
 	}
 
-	allowedTargets := strings.TrimSpace(os.Getenv("WEBMENTIONS_ALLOWED_TARGETS"))
+	allowedTargets := strings.TrimSpace(os.Getenv("MAUSUL_ALLOWED_TARGETS"))
 
 	if allowedTargets != "" {
 		for _, target := range strings.Split(allowedTargets, ",") {
@@ -49,23 +49,23 @@ func newConfig() (*WebmentionsConfig, error) {
 			config.AllowedTargets[strings.ToLower(target)] = true
 		}
 	}
-	config.UserAgent = os.Getenv("WEBMENTIONS_USER_AGENT")
+	config.UserAgent = os.Getenv("MAUSUL_USER_AGENT")
 
-	maxTimeout, err := time.ParseDuration(os.Getenv("WEBMENTIONS_MAX_TIMEOUT"))
+	maxTimeout, err := time.ParseDuration(os.Getenv("MAUSUL_MAX_TIMEOUT"))
 	if err != nil {
 		return nil, err
 	}
 	config.MaxTimeout = maxTimeout
 
-	maxFetchSizeBytes, err := strconv.Atoi(os.Getenv("WEBMENTIONS_MAX_FETCH_SIZE_BYTES"))
+	maxFetchSizeBytes, err := strconv.Atoi(os.Getenv("MAUSUL_MAX_FETCH_SIZE_BYTES"))
 	if err != nil {
 		return nil, err
 	}
 	config.MaxFetchSizeBytes = int64(maxFetchSizeBytes)
 
-	dbPath := os.Getenv("WEBMENTIONS_DB_PATH")
+	dbPath := os.Getenv("MAUSUL_DB_PATH")
 	if dbPath == "" {
-		return nil, errors.New("WEBMENTIONS_DB_PATH environment variable must be set")
+		return nil, errors.New("MAUSUL_DB_PATH environment variable must be set")
 	}
 	config.DbPath = dbPath
 	return config, nil
