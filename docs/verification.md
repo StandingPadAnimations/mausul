@@ -3,7 +3,7 @@
 As per the W3C spec, Mausul verifies Webmentions by
 checking if a link to the target URL is present in the
 content of the source URL. The following elements and
-and their attributesa are checked:
+their attributes are checked:
 
 | Element  | Attribute |
 |----------|-----------|
