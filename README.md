@@ -1,15 +1,20 @@
 # Mausul
 
-Webmentions implementation in Go. Compliant
-with the [W3C Webmentions Spec](https://www.w3.org/TR/webmention/).
-
-This uses SQLite as the underlying database,
-to keep things minimal.
+Mauul is a Webmentions implementation in Go,
+compliant with the [W3C Webmentions Spec](https://www.w3.org/TR/webmention/).
 
 ## Why
 
 Because I wanted to try implementing it myself.
-Also I needed an excuse to learn Go.
+Also I needed an excuse to learn Go. In addition,
+I have specific requirements:
+
+- SQLite backend for simplicity
+- Small binary and container image sizes
+- Podman support
+- A service that takes advantage of SystemD Socket
+  Activation (not just start-up, but actually exit
+  as well on idle)
 
 ## Installation
 
