@@ -1,13 +1,11 @@
 [Unit]
-Description=Webmentions receiver service
+Description=Webmentions revalidation service
 
 [Container]
 Image=webmentions:latest
 EnvironmentFile=%h/webmentions.env
 Volume=%h/webmentions:/webmentions:z
+Exec=revalidate
 
 [Service]
-Restart=on-failure
-
-[Install]
-WantedBy=default.target
+Restart=no
