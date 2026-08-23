@@ -1,5 +1,5 @@
 [Unit]
-Description=Run Webmentions revalidation service weekly
+Description=Run Mausul revalidation service weekly
 
 [Timer]
 OnCalendar=weekly

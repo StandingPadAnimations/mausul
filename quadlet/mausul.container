@@ -1,9 +1,9 @@
 [Unit]
-Description=Webmentions receiver service
+Description=Mausul receiver service
 
 [Container]
-Image=webmentions:latest
-EnvironmentFile=%h/webmentions.env
+Image=mausul:latest
+EnvironmentFile=%h/mausul.env
 Volume=%h/webmentions:/webmentions:z
 
 [Service]

@@ -1,0 +1,11 @@
+[Unit]
+Description=Mausul revalidation service
+
+[Container]
+Image=mausul:latest
+EnvironmentFile=%h/mausul.env
+Volume=%h/webmentions:/webmentions:z
+Exec=revalidate
+
+[Service]
+Restart=no
