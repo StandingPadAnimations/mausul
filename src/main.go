@@ -21,9 +21,11 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/coreos/go-systemd/v22/activation"
@@ -175,15 +177,6 @@ func (a *App) webmentionHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func serve(c *WebmentionsConfig) {
-	listeners, err := activation.Listeners()
-	if err != nil {
-		panic(err)
-	}
-	defer listeners[0].Close()
-
-	if len(listeners) != 1 {
-		panic("Unexpected number of socket activation fds")
-	}
 	db, err := InitDB(c.DbPath)
 	if err != nil {
 		log.Fatalf("failed to initialize database: %v", err)
@@ -202,14 +195,30 @@ func serve(c *WebmentionsConfig) {
 	server := &http.Server{
 		Handler: idleWatcher.Middleware(mux),
 	}
-
 	go idleWatcher.StartWatchdog(context.Background(), server)
-	log.Println("Server started on socket activation fd")
-	if err := server.Serve(listeners[0]); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("HTTP server error: %v", err)
-	}
-	log.Println("Server exited cleanly on idle")
 
+	listeners, err := activation.Listeners()
+	if err != nil {
+		panic(err)
+	}
+	if len(listeners) == 0 {
+		panic("No socket activation fds found")
+	}
+	log.Println("Server started on socket activation fd")
+	var wg sync.WaitGroup
+	for _, l := range listeners {
+		defer l.Close()
+		wg.Add(1)
+		go func(listener net.Listener) {
+			defer wg.Done()
+			if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+				log.Printf("server failed: %v", err)
+			}
+		}(l)
+	}
+
+	wg.Wait()
+	log.Println("Server exited cleanly on idle")
 }
 
 func revalidate(c *WebmentionsConfig) {
