@@ -98,10 +98,9 @@ knows?
 ## Installation Notes
 
 > [!WARNING]
-> I do not recommend using this, as it was designed
-> around my personal website. That said, here's
-> some information for those that _really_ want to
-> use this.
+> This project was designed around my personal website,
+> so I cannot guarantee easy deployment. That said, here's
+> some important details.
 
 Easiest way is to build the container file directly
 from source. Podman is the only officially supported
