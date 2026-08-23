@@ -1,6 +1,7 @@
 [Unit]
 Description=Mausul receiver service
-After=network.target
+After=network.target mausul.socket
+Requires=mausul.socket
 
 [Service]
 ExecStart=%h/mausul
