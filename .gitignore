@@ -2,3 +2,4 @@ webmentions/
 webmention_server
 *.db
 *.db-*
+personal_webmentions.env

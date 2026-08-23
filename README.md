@@ -115,12 +115,15 @@ Note that the container will terminate after five minutes
 of inactivity. This is normal, SystemD Socket Activation
 will handle bringing it back when needed.
 
-Also, the accepted target domains and routes are hardcoded.
-I might expose these in a JSON/TOML configuration in the future,
-but do be aware of that. Same with database paths, which
-are intended to be used in a container. Again, maybe I'll
-write configuration for this in the future, but for now, be
-aware of that.
+As for configuration, the following environment variables
+can be set:
+
+```
+WEBMENTIONS_ALLOWED_TARGETS=example.com,www.example.com
+WEBMENTIONS_USER_AGENT=Webmention-Receiver/1.0
+WEBMENTIONS_MAX_FETCH_SIZE_BYTES=1048576
+WEBMENTIONS_MAX_TIMEOUT=10s
+```
 
 ## License
 

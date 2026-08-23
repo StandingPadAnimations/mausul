@@ -30,16 +30,6 @@ import (
 	"golang.org/x/net/html"
 )
 
-var allowedTargetDomains = map[string]bool{
-	"standingpad.org":               true,
-	"www.standingpad.org":           true,
-	"arch.otter-pythagorean.ts.net": true,
-}
-
-const maxFetchSizeBytes = 1024 * 1024 // 1MB
-const maxTimeout = 10 * time.Second
-const userAgent = "Maryam's Webmention-Receiver/1.0"
-
 type VerificationResult int
 
 const (
@@ -48,9 +38,25 @@ const (
 	StatusError
 )
 
-func IsAllowedTarget(u *url.URL) bool {
+func IsAllowedTarget(c *WebmentionsConfig, u *url.URL) bool {
 	host := strings.ToLower(u.Hostname())
-	return allowedTargetDomains[host]
+	return c.AllowedTargets[host]
+}
+
+func parseAndValidateURL(rawURL string) (*url.URL, error) {
+	u, err := url.ParseRequestURI(rawURL)
+	if err != nil {
+		return nil, errors.New("malformed URL")
+	}
+
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, errors.New("URL scheme must be http or https")
+	}
+
+	if u.Host == "" {
+		return nil, errors.New("URL host must be specified")
+	}
+	return u, nil
 }
 
 func isPrivateIP(ip net.IP) bool {
@@ -66,7 +72,7 @@ func isPrivateIP(ip net.IP) bool {
 		addr.IsUnspecified()
 }
 
-func safeHTTPClient() *http.Client {
+func safeHTTPClient(c *WebmentionsConfig) *http.Client {
 	dialer := &net.Dialer{
 		Timeout: 5 * time.Second,
 	}
@@ -95,17 +101,17 @@ func safeHTTPClient() *http.Client {
 
 	return &http.Client{
 		Transport: transport,
-		Timeout:   maxTimeout,
+		Timeout:   c.MaxTimeout,
 	}
 }
 
-func FetchSourceHTML(sourceURL string) (io.ReadCloser, int, error) {
-	client := safeHTTPClient()
+func FetchSourceHTML(c *WebmentionsConfig, sourceURL string) (io.ReadCloser, int, error) {
+	client := safeHTTPClient(c)
 	req, err := http.NewRequest(http.MethodGet, sourceURL, nil)
 	if err != nil {
 		return nil, 0, err
 	}
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", c.UserAgent)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, err
@@ -140,8 +146,8 @@ func ContainsTargetLink(r io.Reader, target string) (bool, error) {
 	}
 }
 
-func VerifyWebmention(sourceURL, targetURL *url.URL) (VerificationResult, error) {
-	body, statusCode, err := FetchSourceHTML(sourceURL.String())
+func VerifyWebmention(c *WebmentionsConfig, sourceURL, targetURL *url.URL) (VerificationResult, error) {
+	body, statusCode, err := FetchSourceHTML(c, sourceURL.String())
 	if err != nil {
 		return StatusError, err
 	}
@@ -155,7 +161,7 @@ func VerifyWebmention(sourceURL, targetURL *url.URL) (VerificationResult, error)
 		return StatusError, fmt.Errorf("Source returned status %d", statusCode)
 	}
 
-	limitedReader := io.LimitReader(body, maxFetchSizeBytes)
+	limitedReader := io.LimitReader(body, c.MaxFetchSizeBytes)
 	hasLink, err := ContainsTargetLink(limitedReader, targetURL.String())
 	if err != nil {
 		return StatusError, err

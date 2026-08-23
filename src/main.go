@@ -32,6 +32,7 @@ import (
 
 type App struct {
 	db *sql.DB
+	c  *WebmentionsConfig
 }
 
 type WebmentionView struct {
@@ -73,7 +74,7 @@ func (a *App) getWebmentionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !IsAllowedTarget(targetURL) {
+	if !IsAllowedTarget(a.c, targetURL) {
 		http.Error(w, fmt.Sprintf("Target URL %s is not allowed.", targetURL.String()), http.StatusBadRequest)
 		return
 	}
@@ -121,20 +122,6 @@ func (a *App) webmentionHandler(w http.ResponseWriter, r *http.Request) {
 	rawSource := r.FormValue("source")
 	rawTarget := r.FormValue("target")
 
-	// So this gets interesting in the specification.
-	//
-	// Officially, the W3C specification states that when
-	// processing a request asynchronously, but _without_
-	// a status URL, "the reciever MUST reply with an HTTP
-	// 202 Accepted response". Thus, _technically_, it could
-	// be argued the basic checks below are not compliant with
-	// the specification.
-	//
-	// However, since these checks are stupidly simple to perform
-	// (literally just validating the URLs are, well, valid URLs),
-	// we'll repond with a 400 Bad Request with these cases, even
-	// though _strictly_ speaking, this isn't compliant.
-
 	if rawSource == "" || rawTarget == "" {
 		http.Error(w, "Source and target URLs are required", http.StatusBadRequest)
 		return
@@ -157,7 +144,7 @@ func (a *App) webmentionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !IsAllowedTarget(targetURL) {
+	if !IsAllowedTarget(a.c, targetURL) {
 		http.Error(w, fmt.Sprintf("Target domain'%s' is not allowed", targetURL.Host), http.StatusBadRequest)
 		return
 	}
@@ -167,7 +154,7 @@ func (a *App) webmentionHandler(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 
 		log.Printf("[worker] verifying mention: %s -> %s", sourceURL.String(), targetURL.String())
-		status, err := VerifyWebmention(sourceURL, targetURL)
+		status, err := VerifyWebmention(a.c, sourceURL, targetURL)
 		if err != nil {
 			log.Printf("[worker] failed to verify mention: %s", err)
 			return
@@ -184,15 +171,10 @@ func (a *App) webmentionHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
-
 	w.WriteHeader(http.StatusAccepted)
-
-	// Simulate sending a webmention request
-	// This is a placeholder for actual webmention sending logic
-	fmt.Printf("Sending webmention from %s to %s\n", sourceURL, targetURL)
 }
 
-func serve() {
+func serve(c *WebmentionsConfig) {
 	listeners, err := activation.Listeners()
 	if err != nil {
 		panic(err)
@@ -230,7 +212,7 @@ func serve() {
 
 }
 
-func revalidate() {
+func revalidate(c *WebmentionsConfig) {
 	db, err := InitDB("/webmentions/webmentions.db")
 	if err != nil {
 		log.Fatalf("failed to initialize database: %v", err)
@@ -261,7 +243,7 @@ func revalidate() {
 			continue
 		}
 
-		status, err := VerifyWebmention(sourceURL, targetURL)
+		status, err := VerifyWebmention(c, sourceURL, targetURL)
 		if err != nil {
 			log.Printf("[revalidate] fetch/verification error for %s -> %s: %v", mention.Source, mention.Target, err)
 			continue
@@ -281,34 +263,21 @@ func main() {
 		mode = os.Args[1]
 	}
 
+	c, err := newConfig()
+	if err != nil {
+		log.Fatalf("Failed to fetch config: %v", err)
+	}
+
 	switch mode {
 	case "serve":
-		serve()
+		serve(c)
 	case "revalidate":
-		revalidate()
+		revalidate(c)
+	case "dump-config":
+		fmt.Printf("Config loaded successfully:\n%+v\n", c)
+		fmt.Printf("%#v\n", c.AllowedTargets)
 	default:
-		fmt.Fprintf(os.Stderr, "Usage: %s [serve|revalidate]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [serve|revalidate|dump-config]\n", os.Args[0])
 		os.Exit(1)
 	}
-}
-
-func homeHandler(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Webmention Receiver Test</title>
-    <link rel="webmention" href="/webmention">
-    <link rel="me" href="https://github.com/StandingPadAnimations">
-</head>
-<body>
-    <h1>Webmention Receiver</h1>
-    <p><a href="https://github.com/StandingPadAnimations" rel="me">GitHub Profile</a></p>
-</body>
-</html>`)
 }
