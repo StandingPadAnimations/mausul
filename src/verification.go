@@ -132,9 +132,19 @@ func ContainsTargetLink(r io.Reader, target string) (bool, error) {
 			return false, tokenizer.Err()
 		case html.StartTagToken, html.SelfClosingTagToken:
 			token := tokenizer.Token()
-			if token.Data == "a" || token.Data == "link" {
+			switch token.Data {
+			case "a", "link", "area":
 				for _, attr := range token.Attr {
 					if attr.Key == "href" {
+						trimmed := strings.TrimRight(attr.Val, "/")
+						if trimmed == targetNorm {
+							return true, nil
+						}
+					}
+				}
+			case "video", "source", "img", "iframe", "embed", "audio", "track", "input", "script":
+				for _, attr := range token.Attr {
+					if attr.Key == "src" {
 						trimmed := strings.TrimRight(attr.Val, "/")
 						if trimmed == targetNorm {
 							return true, nil
