@@ -189,7 +189,7 @@ func serve(c *WebmentionsConfig) {
 		log.Fatalf("failed to initialize database: %v", err)
 	}
 	defer db.Close()
-	app := &App{db: db}
+	app := &App{db: db, c: c}
 
 	mux := http.NewServeMux()
 	webmentionLimiter := newIPRateLimiter(rate.Every(10*time.Minute), 3)
