@@ -39,7 +39,7 @@ func InitDB(dbPath string) (*sql.DB, error) {
 	params.Add("_pragma", "synchronous(NORMAL)")
 	params.Add("_pragma", "foreign_keys(ON)")
 	params.Add("_txlock", "immediate")
-	dsn := fmt.Sprintf("%s?%s", dbPath, params.Encode())
+	dsn := fmt.Sprintf("file:%s?%s", dbPath, params.Encode())
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -47,24 +47,16 @@ func InitDB(dbPath string) (*sql.DB, error) {
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(5)
 
-	if err := db.Ping(); err != nil {
+	ctx := context.Background()
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	schema := `
-	CREATE TABLE IF NOT EXISTS webmentions (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		source TEXT NOT NULL,
-		target TEXT NOT NULL,
-		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-		UNIQUE(source, target)
-	);
-	`
-
-	if _, err := db.Exec(schema); err != nil {
-		return nil, fmt.Errorf("failed to create table: %w", err)
+	if err := migrate(ctx, db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to run database migrations: %w", err)
 	}
-
 	return db, nil
 }
 

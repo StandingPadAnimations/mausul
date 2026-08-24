@@ -266,6 +266,21 @@ func revalidate(c *WebmentionsConfig) {
 	}
 }
 
+func runMigrations(c *WebmentionsConfig) {
+	db, err := InitDB(c.DbPath)
+	if err != nil {
+		log.Fatalf("Failed to init database: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	log.Println("[migrate] checking and applying database migrations...")
+	if err := migrate(ctx, db); err != nil {
+		log.Fatalf("Failed to apply migrations: %v", err)
+	}
+	log.Println("[migrate] migrations applied successfully")
+}
+
 func main() {
 	mode := "serve"
 	if len(os.Args) > 1 {
