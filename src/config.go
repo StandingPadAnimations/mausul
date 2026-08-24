@@ -24,44 +24,61 @@ import (
 )
 
 type WebmentionsConfig struct {
-	AllowedTargets    map[string]bool
-	UserAgent         string
-	MaxTimeout        time.Duration
-	MaxFetchSizeBytes int64
-	DbPath            string
+	AllowedTargets       map[string]bool
+	UserAgent            string
+	MaxTimeout           time.Duration
+	MaxFetchSizeBytes    int64
+	DbPath               string
+	AllowPrivateMentions bool
 }
 
 func newConfig() (*WebmentionsConfig, error) {
 	config := &WebmentionsConfig{
-		AllowedTargets:    map[string]bool{},
-		UserAgent:         "Mausul Webmention-Receiver Bot/1.0",
-		MaxTimeout:        10 * time.Second,
-		MaxFetchSizeBytes: 1024 * 1024, // 1MB
+		AllowedTargets:       map[string]bool{},
+		UserAgent:            "Mausul Webmention-Receiver Bot/1.0",
+		MaxTimeout:           10 * time.Second,
+		MaxFetchSizeBytes:    1024 * 1024, // 1MB
+		AllowPrivateMentions: false,
 	}
 
 	allowedTargets := strings.TrimSpace(os.Getenv("MAUSUL_ALLOWED_TARGETS"))
 
 	if allowedTargets != "" {
 		for _, target := range strings.Split(allowedTargets, ",") {
-			if target == "" {
+			if target := strings.TrimSpace(target); target == "" {
 				continue
 			}
 			config.AllowedTargets[strings.ToLower(target)] = true
 		}
 	}
-	config.UserAgent = os.Getenv("MAUSUL_USER_AGENT")
 
-	maxTimeout, err := time.ParseDuration(os.Getenv("MAUSUL_MAX_TIMEOUT"))
-	if err != nil {
-		return nil, err
+	if ua := os.Getenv("MAUSUL_USER_AGENT"); ua != "" {
+		config.UserAgent = os.Getenv("MAUSUL_USER_AGENT")
 	}
-	config.MaxTimeout = maxTimeout
 
-	maxFetchSizeBytes, err := strconv.Atoi(os.Getenv("MAUSUL_MAX_FETCH_SIZE_BYTES"))
-	if err != nil {
-		return nil, err
+	if envTimeout := os.Getenv("MAUSUL_MAX_TIMEOUT"); envTimeout != "" {
+		maxTimeout, err := time.ParseDuration(envTimeout)
+		if err != nil {
+			return nil, err
+		}
+		config.MaxTimeout = maxTimeout
 	}
-	config.MaxFetchSizeBytes = int64(maxFetchSizeBytes)
+
+	if envFetchSizeBytes := os.Getenv("MAUSUL_MAX_FETCH_SIZE_BYTES"); envFetchSizeBytes != "" {
+		maxFetchSizeBytes, err := strconv.Atoi(envFetchSizeBytes)
+		if err != nil {
+			return nil, err
+		}
+		config.MaxFetchSizeBytes = int64(maxFetchSizeBytes)
+	}
+
+	if envAllowPrivateMentions := os.Getenv("MAUSUL_ALLOW_PRIVATE_MENTIONS"); envAllowPrivateMentions != "" {
+		val, err := strconv.ParseBool(envAllowPrivateMentions)
+		if err != nil {
+			return nil, err
+		}
+		config.AllowPrivateMentions = val
+	}
 
 	dbPath := os.Getenv("MAUSUL_DB_PATH")
 	if dbPath == "" {

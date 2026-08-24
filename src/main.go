@@ -168,6 +168,11 @@ func (a *App) webmentionHandler(w http.ResponseWriter, r *http.Request) {
 		Realm:  r.FormValue("realm"),
 	}
 
+	if !a.c.AllowPrivateMentions && wr.Code != "" {
+		http.Error(w, "Private mentions are not allowed", http.StatusBadRequest)
+		return
+	}
+
 	a.workersWg.Add(1)
 	go func() {
 		defer a.workersWg.Done()
