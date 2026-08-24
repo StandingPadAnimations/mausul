@@ -33,9 +33,10 @@ import (
 )
 
 type App struct {
-	db        *sql.DB
-	c         *WebmentionsConfig
-	workersWg sync.WaitGroup
+	db          *sql.DB
+	c           *WebmentionsConfig
+	idleWatcher *IdleWatcher
+	workersWg   sync.WaitGroup
 }
 
 type WebmentionRequest struct {
@@ -175,11 +176,12 @@ func (a *App) webmentionHandler(w http.ResponseWriter, r *http.Request) {
 
 		log.Printf("[worker] verifying mention: %s -> %s", sourceURL.String(), targetURL.String())
 		status, tokenResponse, err := VerifyWebmention(a.c, &wr)
-
 		if err != nil {
 			log.Printf("[worker] failed to verify mention: %s", err)
 			return
 		}
+		a.idleWatcher.RecordActivity()
+
 		if status == StatusKeep {
 			log.Printf("[worker] mention verified: %s -> %s", sourceURL.String(), targetURL.String())
 			if err := SaveWebmention(ctx, a.db, &wr); err != nil {
@@ -198,7 +200,7 @@ func (a *App) webmentionHandler(w http.ResponseWriter, r *http.Request) {
 				log.Printf("[worker] error saving token: %v", err)
 			}
 		}
-
+		a.idleWatcher.RecordActivity()
 	}()
 	w.WriteHeader(http.StatusAccepted)
 }
@@ -209,7 +211,8 @@ func serve(c *WebmentionsConfig) {
 		log.Fatalf("failed to initialize database: %v", err)
 	}
 	defer db.Close()
-	app := &App{db: db, c: c}
+	idleWatcher := newIdleWatcher(5 * time.Minute)
+	app := &App{db: db, c: c, idleWatcher: idleWatcher}
 
 	mux := http.NewServeMux()
 	webmentionLimiter := newIPRateLimiter(rate.Limit(1.0), 3)
@@ -218,7 +221,6 @@ func serve(c *WebmentionsConfig) {
 	getwebmentionsLimiter := newIPRateLimiter(rate.Every(6*time.Second), 3)
 	mux.HandleFunc("/get_webmentions", getwebmentionsLimiter.limitMiddleware(app.getWebmentionsHandler))
 
-	idleWatcher := newIdleWatcher(5 * time.Minute)
 	server := &http.Server{
 		Handler: idleWatcher.Middleware(mux),
 	}
