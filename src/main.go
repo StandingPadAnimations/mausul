@@ -209,10 +209,10 @@ func serve(c *WebmentionsConfig) {
 	app := &App{db: db, c: c}
 
 	mux := http.NewServeMux()
-	webmentionLimiter := newIPRateLimiter(rate.Every(10*time.Minute), 3)
+	webmentionLimiter := newIPRateLimiter(rate.Limit(1.0), 3)
 	mux.HandleFunc("/webmention", webmentionLimiter.limitMiddleware(app.webmentionHandler))
 
-	getwebmentionsLimiter := newIPRateLimiter(rate.Every(60*time.Minute), 3)
+	getwebmentionsLimiter := newIPRateLimiter(rate.Every(6*time.Second), 3)
 	mux.HandleFunc("/get_webmentions", getwebmentionsLimiter.limitMiddleware(app.getWebmentionsHandler))
 
 	idleWatcher := newIdleWatcher(5 * time.Minute)
