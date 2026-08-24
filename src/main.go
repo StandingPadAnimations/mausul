@@ -33,8 +33,9 @@ import (
 )
 
 type App struct {
-	db *sql.DB
-	c  *WebmentionsConfig
+	db        *sql.DB
+	c         *WebmentionsConfig
+	workersWg sync.WaitGroup
 }
 
 type WebmentionRequest struct {
@@ -166,7 +167,9 @@ func (a *App) webmentionHandler(w http.ResponseWriter, r *http.Request) {
 		Realm:  r.FormValue("realm"),
 	}
 
+	a.workersWg.Add(1)
 	go func() {
+		defer a.workersWg.Done()
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
@@ -242,6 +245,10 @@ func serve(c *WebmentionsConfig) {
 	}
 
 	wg.Wait()
+
+	log.Println("Server HTTP listener closed, waiting for background workers to complete...")
+	app.workersWg.Wait()
+
 	log.Println("Server exited cleanly on idle")
 }
 
