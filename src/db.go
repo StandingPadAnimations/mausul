@@ -30,6 +30,7 @@ type Webmention struct {
 	Source    string
 	Target    string
 	CreatedAt time.Time
+	IsPrivate bool
 }
 
 func InitDB(dbPath string) (*sql.DB, error) {
@@ -60,14 +61,14 @@ func InitDB(dbPath string) (*sql.DB, error) {
 	return db, nil
 }
 
-func SaveWebmention(ctx context.Context, db *sql.DB, source, target string) error {
+func SaveWebmention(ctx context.Context, db *sql.DB, wr *WebmentionRequest) error {
 	query := `
-	INSERT INTO webmentions (source, target, created_at)
-	VALUES (?, ?, CURRENT_TIMESTAMP)
+	INSERT INTO webmentions (source, target, created_at, is_private)
+	VALUES (?, ?, CURRENT_TIMESTAMP, ?)
 	ON CONFLICT (source, target) DO UPDATE SET 
-			created_at = CURRENT_TIMESTAMP;
+			is_private = excluded.is_private;
 	`
-	_, err := db.ExecContext(ctx, query, source, target)
+	_, err := db.ExecContext(ctx, query, wr.Source.String(), wr.Target.String(), IsPrivate(wr))
 	return err
 }
 
@@ -77,14 +78,15 @@ func DeleteWebmention(ctx context.Context, db *sql.DB, source, target string) er
 	return err
 }
 
-func GetWebmentionsByTarget(ctx context.Context, db *sql.DB, target string) ([]*Webmention, error) {
+func GetWebmentionsByTarget(ctx context.Context, db *sql.DB, target string, private bool) ([]*Webmention, error) {
 	query := `
-		SELECT id, source, target, created_at
+		SELECT id, source, target, created_at, is_private
 		FROM webmentions
 		WHERE target = ?
+		  AND is_private = ?
 		ORDER BY created_at ASC;
 	`
-	rows, err := db.QueryContext(ctx, query, target)
+	rows, err := db.QueryContext(ctx, query, target, private)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query webmentions: %w", err)
 	}
@@ -93,7 +95,7 @@ func GetWebmentionsByTarget(ctx context.Context, db *sql.DB, target string) ([]*
 	var results []*Webmention
 	for rows.Next() {
 		var webmention Webmention
-		if err := rows.Scan(&webmention.ID, &webmention.Source, &webmention.Target, &webmention.CreatedAt); err != nil {
+		if err := rows.Scan(&webmention.ID, &webmention.Source, &webmention.Target, &webmention.CreatedAt, &webmention.IsPrivate); err != nil {
 			return nil, fmt.Errorf("failed to scan webmention: %w", err)
 		}
 		results = append(results, &webmention)
@@ -106,7 +108,7 @@ func GetWebmentionsByTarget(ctx context.Context, db *sql.DB, target string) ([]*
 
 func GetAllWebmentions(ctx context.Context, db *sql.DB) ([]*Webmention, error) {
 	query := `
-		SELECT id, source, target, created_at
+		SELECT id, source, target, created_at, is_private
 		FROM webmentions
 		ORDER BY created_at ASC;
 	`
@@ -118,14 +120,35 @@ func GetAllWebmentions(ctx context.Context, db *sql.DB) ([]*Webmention, error) {
 
 	var results []*Webmention
 	for rows.Next() {
-		var webmention Webmention
-		if err := rows.Scan(&webmention.ID, &webmention.Source, &webmention.Target, &webmention.CreatedAt); err != nil {
+		webmention := &Webmention{}
+		if err := rows.Scan(&webmention.ID, &webmention.Source, &webmention.Target, &webmention.CreatedAt, &webmention.IsPrivate); err != nil {
 			return nil, fmt.Errorf("failed to scan webmention: %w", err)
 		}
-		results = append(results, &webmention)
+		results = append(results, webmention)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to fetch all webmentions: %w", err)
 	}
 	return results, nil
+}
+
+func StoreToken(ctx context.Context, db *sql.DB, realm string, tokenResponse *TokenResponse) error {
+	query := `
+		INSERT INTO tokens (realm, access_token, created_at, updated_at, expires_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)
+		ON CONFLICT (realm) DO UPDATE SET
+				access_token = excluded.access_token,
+				expires_at = excluded.expires_at,
+				updated_at = CURRENT_TIMESTAMP;
+	`
+	var expiresAt any
+	if tokenResponse.ExpiresIn > 0 {
+		// Calculate absolute timestamp: now + relative seconds
+		expiresAt = time.Now().UTC().Add(time.Duration(tokenResponse.ExpiresIn) * time.Second)
+	}
+	_, err := db.ExecContext(ctx, query, realm, tokenResponse.AccessToken, expiresAt)
+	if err != nil {
+		return fmt.Errorf("failed to store token: %w", err)
+	}
+	return nil
 }

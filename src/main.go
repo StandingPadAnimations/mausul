@@ -37,6 +37,13 @@ type App struct {
 	c  *WebmentionsConfig
 }
 
+type WebmentionRequest struct {
+	Target url.URL
+	Source url.URL
+	Code   string
+	Realm  string
+}
+
 type WebmentionView struct {
 	Source       string
 	DisplayLabel string
@@ -81,7 +88,8 @@ func (a *App) getWebmentionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mentions, err := GetWebmentionsByTarget(r.Context(), a.db, targetURL.String())
+	// NO PRIVATE WEBMENTIONS
+	mentions, err := GetWebmentionsByTarget(r.Context(), a.db, targetURL.String(), false)
 	if err != nil {
 		http.Error(w, "Failed to retrieve webmentions", http.StatusInternalServerError)
 		return
@@ -141,7 +149,7 @@ func (a *App) webmentionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if sourceURL == targetURL {
+	if sourceURL.String() == targetURL.String() {
 		http.Error(w, "Source and target URLs cannot be the same", http.StatusBadRequest)
 		return
 	}
@@ -151,19 +159,27 @@ func (a *App) webmentionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	wr := WebmentionRequest{
+		Source: *sourceURL,
+		Target: *targetURL,
+		Code:   r.FormValue("code"),
+		Realm:  r.FormValue("realm"),
+	}
+
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		log.Printf("[worker] verifying mention: %s -> %s", sourceURL.String(), targetURL.String())
-		status, err := VerifyWebmention(a.c, sourceURL, targetURL)
+		status, tokenResponse, err := VerifyWebmention(a.c, &wr)
+
 		if err != nil {
 			log.Printf("[worker] failed to verify mention: %s", err)
 			return
 		}
-		if status == StatusDelete {
+		if status == StatusKeep {
 			log.Printf("[worker] mention verified: %s -> %s", sourceURL.String(), targetURL.String())
-			if err := SaveWebmention(ctx, a.db, sourceURL.String(), targetURL.String()); err != nil {
+			if err := SaveWebmention(ctx, a.db, &wr); err != nil {
 				log.Printf("[worker] error saving to database: %v", err)
 			}
 		} else {
@@ -172,6 +188,14 @@ func (a *App) webmentionHandler(w http.ResponseWriter, r *http.Request) {
 				log.Printf("[worker] error deleting from database: %v", err)
 			}
 		}
+
+		if wr.Realm != "" && tokenResponse != nil {
+			log.Printf("[worker] saving token: %s -> %s", sourceURL.String(), targetURL.String())
+			if err := StoreToken(ctx, a.db, wr.Realm, tokenResponse); err != nil {
+				log.Printf("[worker] error saving token: %v", err)
+			}
+		}
+
 	}()
 	w.WriteHeader(http.StatusAccepted)
 }
@@ -252,7 +276,21 @@ func revalidate(c *WebmentionsConfig) {
 			continue
 		}
 
-		status, err := VerifyWebmention(c, sourceURL, targetURL)
+		// Private Webmentions cannot be revalidated,
+		// since a code is required to get the token.
+		//
+		// Although we could have a realm that has an
+		// unexpired token, it's easier just to treat
+		// Private Webmentions as something that has
+		// to be updated by the author.
+		if mention.IsPrivate {
+			continue
+		}
+		wr := WebmentionRequest{
+			Source: *sourceURL,
+			Target: *targetURL,
+		}
+		status, _, err := VerifyWebmention(c, &wr)
 		if err != nil {
 			log.Printf("[revalidate] fetch/verification error for %s -> %s: %v", mention.Source, mention.Target, err)
 			continue

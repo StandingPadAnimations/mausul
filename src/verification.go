@@ -43,6 +43,10 @@ func IsAllowedTarget(c *WebmentionsConfig, u *url.URL) bool {
 	return c.AllowedTargets[host]
 }
 
+func IsPrivate(wr *WebmentionRequest) bool {
+	return wr.Code != ""
+}
+
 func parseAndValidateURL(rawURL string) (*url.URL, error) {
 	u, err := url.ParseRequestURI(rawURL)
 	if err != nil {
@@ -105,18 +109,33 @@ func safeHTTPClient(c *WebmentionsConfig) *http.Client {
 	}
 }
 
-func FetchSourceHTML(c *WebmentionsConfig, sourceURL string) (io.ReadCloser, int, error) {
+func FetchSourceHTML(c *WebmentionsConfig, sourceURL string) (io.ReadCloser, int, http.Header, error) {
 	client := safeHTTPClient(c)
 	req, err := http.NewRequest(http.MethodGet, sourceURL, nil)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	req.Header.Set("User-Agent", c.UserAgent)
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
-	return resp.Body, resp.StatusCode, nil
+	return resp.Body, resp.StatusCode, resp.Header, nil
+}
+
+func FetchSourceHTMLPrivate(c *WebmentionsConfig, sourceURL, token string) (io.ReadCloser, int, http.Header, error) {
+	client := safeHTTPClient(c)
+	req, err := http.NewRequest(http.MethodGet, sourceURL, nil)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	req.Header.Set("User-Agent", c.UserAgent)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	return resp.Body, resp.StatusCode, resp.Header, nil
 }
 
 func ContainsTargetLink(r io.Reader, target string) (bool, error) {
@@ -156,31 +175,58 @@ func ContainsTargetLink(r io.Reader, target string) (bool, error) {
 	}
 }
 
-func VerifyWebmention(c *WebmentionsConfig, sourceURL, targetURL *url.URL) (VerificationResult, error) {
-	body, statusCode, err := FetchSourceHTML(c, sourceURL.String())
+func VerifyWebmention(c *WebmentionsConfig, wr *WebmentionRequest) (VerificationResult, *TokenResponse, error) {
+	// Even if its private, we need to make
+	// one GET request anyway to get the token
+	// endpoint
+	body, statusCode, header, err := FetchSourceHTML(c, wr.Source.String())
 	if err != nil {
-		return StatusError, err
+		return StatusError, nil, err
+	}
+
+	if statusCode == http.StatusGone {
+		body.Close()
+		return StatusDelete, nil, nil
+	}
+
+	// If unauthorized and the Webmention is private
+	// TODO: Use wr.Realm to reuse tokens
+	var tokenResponse *TokenResponse
+	if statusCode == http.StatusUnauthorized && IsPrivate(wr) {
+		body.Close()
+
+		linkHeader := header.Get("Link")
+		tokenEndpoint, err := ParseTokenEndpoint(linkHeader, &wr.Source)
+		if err != nil {
+			return StatusError, nil, fmt.Errorf("failed to discover token endpoint: %w", err)
+		}
+
+		client := safeHTTPClient(c)
+		tokenResponse, err = ExchangeCodeForToken(client, tokenEndpoint, wr.Code)
+		if err != nil {
+			return StatusError, nil, fmt.Errorf("token exchange failed: %w", err)
+		}
+		body, statusCode, header, err = FetchSourceHTMLPrivate(c, wr.Source.String(), tokenResponse.AccessToken)
+		if err != nil {
+			return StatusError, nil, err
+		}
 	}
 	defer body.Close()
 
-	if statusCode == http.StatusGone {
-		return StatusDelete, nil
-	}
-
 	if statusCode != http.StatusOK {
-		return StatusError, fmt.Errorf("Source returned status %d", statusCode)
+		return StatusError, nil, fmt.Errorf("Source returned status %d", statusCode)
 	}
 
 	limitedReader := io.LimitReader(body, c.MaxFetchSizeBytes)
-	hasLink, err := ContainsTargetLink(limitedReader, targetURL.String())
+	hasLink, err := ContainsTargetLink(limitedReader, wr.Target.String())
 	if err != nil {
-		return StatusError, err
+		return StatusError, nil, err
 	}
 
 	if hasLink {
-		return StatusKeep, nil
+		return StatusKeep, tokenResponse, nil
 	}
 
 	// Page exists, target link not present on page
-	return StatusDelete, nil
+	return StatusDelete, nil, nil
 }
