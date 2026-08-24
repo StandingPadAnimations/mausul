@@ -25,6 +25,7 @@ import (
 	"net/netip"
 	"net/url"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/net/html"
@@ -73,12 +74,24 @@ func isPrivateIP(ip net.IP) bool {
 		addr.IsLoopback() ||
 		addr.IsLinkLocalUnicast() ||
 		addr.IsLinkLocalMulticast() ||
-		addr.IsUnspecified()
+		addr.IsUnspecified() ||
+		addr.IsInterfaceLocalMulticast()
 }
 
 func safeHTTPClient(c *WebmentionsConfig) *http.Client {
 	dialer := &net.Dialer{
 		Timeout: 5 * time.Second,
+		Control: func(network, address string, c syscall.RawConn) error {
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				return err
+			}
+			ip := net.ParseIP(host)
+			if ip != nil && isPrivateIP(ip) {
+				return fmt.Errorf("SSRF blocked: %s is a private IP", host)
+			}
+			return nil
+		},
 	}
 
 	transport := &http.Transport{
@@ -86,6 +99,10 @@ func safeHTTPClient(c *WebmentionsConfig) *http.Client {
 			host, port, err := net.SplitHostPort(addr)
 			if err != nil {
 				return nil, err
+			}
+
+			if port != "80" && port != "443" {
+				return nil, fmt.Errorf("SSRF blocked: non-standard port %s", port)
 			}
 
 			ips, err := net.LookupIP(host)
@@ -98,7 +115,7 @@ func safeHTTPClient(c *WebmentionsConfig) *http.Client {
 					return nil, fmt.Errorf("SSRF blocked: %s is a private IP", ip.String())
 				}
 			}
-			return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].String(), port))
+			return dialer.DialContext(ctx, network, addr)
 		},
 		ResponseHeaderTimeout: 5 * time.Second,
 	}
@@ -106,6 +123,15 @@ func safeHTTPClient(c *WebmentionsConfig) *http.Client {
 	return &http.Client{
 		Transport: transport,
 		Timeout:   c.MaxTimeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 3 {
+				return errors.New("stopped after 3 redirects")
+			}
+			if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
+				return errors.New("unsupported redirect scheme")
+			}
+			return nil
+		},
 	}
 }
 
