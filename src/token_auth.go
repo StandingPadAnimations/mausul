@@ -1,3 +1,18 @@
+// Copyright (C) 2026 Maryam Stellamaris <maryam@standingpad.org>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 package main
 
 import (
@@ -7,12 +22,14 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type TokenResponse struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`
 	ExpiresIn   int64  `json:"expires_in"`
+	ReceivedAt  time.Time
 }
 
 var linkHeaderRegex = regexp.MustCompile(`<([^>]+)>;\s*rel=["']?([^"';]+)["']?`)
@@ -45,8 +62,8 @@ func ParseTokenEndpoint(linkHeader string, baseURL *url.URL) (string, error) {
 
 func ExchangeCodeForToken(client *http.Client, tokenEndpoint string, code string) (*TokenResponse, error) {
 	data := url.Values{
-		"grant_type":   {"authorization_code"},
-		"code":         {code},
+		"grant_type": {"authorization_code"},
+		"code":       {code},
 	}
 
 	req, err := http.NewRequest(http.MethodPost, tokenEndpoint, strings.NewReader(data.Encode()))
@@ -70,6 +87,7 @@ func ExchangeCodeForToken(client *http.Client, tokenEndpoint string, code string
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
 		return nil, fmt.Errorf("failed to decode token response: %w", err)
 	}
+	tokenResp.ReceivedAt = time.Now().UTC()
 
 	if tokenResp.AccessToken == "" {
 		return nil, fmt.Errorf("token endpoint returned empty access_token")

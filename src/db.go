@@ -18,6 +18,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"time"
@@ -135,20 +136,57 @@ func GetAllWebmentions(ctx context.Context, db *sql.DB) ([]*Webmention, error) {
 func StoreToken(ctx context.Context, db *sql.DB, realm string, tokenResponse *TokenResponse) error {
 	query := `
 		INSERT INTO tokens (realm, access_token, created_at, updated_at, expires_at)
-		VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)
+		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (realm) DO UPDATE SET
 				access_token = excluded.access_token,
 				expires_at = excluded.expires_at,
-				updated_at = CURRENT_TIMESTAMP;
+				updated_at = excluded.updated_at;
 	`
 	var expiresAt any
 	if tokenResponse.ExpiresIn > 0 {
-		// Calculate absolute timestamp: now + relative seconds
-		expiresAt = time.Now().UTC().Add(time.Duration(tokenResponse.ExpiresIn) * time.Second)
+		expiresAt = tokenResponse.ReceivedAt.Add(time.Duration(tokenResponse.ExpiresIn) * time.Second)
 	}
-	_, err := db.ExecContext(ctx, query, realm, tokenResponse.AccessToken, expiresAt)
+	_, err := db.ExecContext(ctx, query, realm, tokenResponse.AccessToken, tokenResponse.ReceivedAt, tokenResponse.ReceivedAt, expiresAt)
 	if err != nil {
 		return fmt.Errorf("failed to store token: %w", err)
 	}
 	return nil
+}
+
+func GetToken(ctx context.Context, db *sql.DB, realm string) (*TokenResponse, error) {
+	query := `
+		SELECT access_token, expires_at, updated_at
+		FROM tokens
+		WHERE realm = ?
+	`
+	var tokenResponse TokenResponse
+	var expiresAt sql.NullTime
+	var updatedAt sql.NullTime
+
+	err := db.QueryRowContext(ctx, query, realm).Scan(&tokenResponse.AccessToken, &expiresAt, &updatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("no token found for realm")
+		}
+		return nil, fmt.Errorf("failed to get token: %w", err)
+	}
+
+	if updatedAt.Valid {
+		tokenResponse.ReceivedAt = updatedAt.Time
+	}
+
+	if expiresAt.Valid {
+		remaining := time.Until(expiresAt.Time).Seconds()
+
+		// If the token is 15 seconds from expiration,
+		// treat it as expired. Due to several factors
+		// (such as network issues), we can't assume
+		// all non-zero values are non-expired. 15 seconds
+		// is a reasonable buffer.
+		if remaining <= 15 {
+			return nil, fmt.Errorf("token expired")
+		}
+		tokenResponse.ExpiresIn = int64(remaining)
+	}
+	return &tokenResponse, nil
 }
