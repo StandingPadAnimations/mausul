@@ -180,7 +180,7 @@ func (a *App) webmentionHandler(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 
 		log.Printf("[worker] verifying mention: %s -> %s", sourceURL.String(), targetURL.String())
-		status, tokenResponse, err := VerifyWebmention(a.c, &wr)
+		status, tokenResponse, err := VerifyWebmention(a.c, &wr, a.db)
 		if err != nil {
 			log.Printf("[worker] failed to verify mention: %s", err)
 			return
@@ -304,7 +304,7 @@ func revalidate(c *WebmentionsConfig) {
 			Source: *sourceURL,
 			Target: *targetURL,
 		}
-		status, _, err := VerifyWebmention(c, &wr)
+		status, _, err := VerifyWebmention(c, &wr, db)
 		if err != nil {
 			log.Printf("[revalidate] fetch/verification error for %s -> %s: %v", mention.Source, mention.Target, err)
 			continue

@@ -17,6 +17,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -201,7 +202,7 @@ func ContainsTargetLink(r io.Reader, target string) (bool, error) {
 	}
 }
 
-func VerifyWebmention(c *WebmentionsConfig, wr *WebmentionRequest) (VerificationResult, *TokenResponse, error) {
+func VerifyWebmention(c *WebmentionsConfig, wr *WebmentionRequest, db *sql.DB) (VerificationResult, *TokenResponse, error) {
 	// Even if its private, we need to make
 	// one GET request anyway to get the token
 	// endpoint
@@ -215,27 +216,65 @@ func VerifyWebmention(c *WebmentionsConfig, wr *WebmentionRequest) (Verification
 		return StatusDelete, nil, nil
 	}
 
-	// If unauthorized and the Webmention is private
-	// TODO: Use wr.Realm to reuse tokens
 	var tokenResponse *TokenResponse
 	if statusCode == http.StatusUnauthorized && IsPrivate(wr) {
 		body.Close()
 
+		// Get the token endpoint always
+		// just in case we need to try getting
+		// a new token after an issue with
+		// a cached token
 		linkHeader := header.Get("Link")
-		tokenEndpoint, err := ParseTokenEndpoint(linkHeader, &wr.Source)
-		if err != nil {
-			return StatusError, nil, fmt.Errorf("failed to discover token endpoint: %w", err)
+		tokenEndpoint, endpointErr := ParseTokenEndpoint(linkHeader, &wr.Source)
+		if endpointErr != nil {
+			return StatusError, nil, fmt.Errorf("failed to discover token endpoint: %w", endpointErr)
 		}
 
-		client := safeHTTPClient(c)
-		tokenResponse, err = ExchangeCodeForToken(client, tokenEndpoint, wr.Code)
-		if err != nil {
-			return StatusError, nil, fmt.Errorf("token exchange failed: %w", err)
+		isCached := true
+		getTokenFromEndpoint := func() (*TokenResponse, error) {
+			client := safeHTTPClient(c)
+			res, err := ExchangeCodeForToken(client, tokenEndpoint, wr.Code)
+			if err != nil {
+				return nil, fmt.Errorf("token exchange failed: %w", err)
+			}
+			isCached = false
+			return res, err
+		}
+
+		var tokenErr error
+		tokenResponse, tokenErr = GetToken(context.Background(), db, wr.Realm)
+
+		// If we get an error, assume
+		// the token is expired or invalid,
+		// or otherwise isn't present, and
+		// receive a new token.
+		if tokenErr != nil {
+			tokenResponse, tokenErr = getTokenFromEndpoint()
+			if tokenErr != nil {
+				return StatusError, nil, fmt.Errorf("failed to get new token: %w", tokenErr)
+			}
 		}
 		body, statusCode, header, err = FetchSourceHTMLPrivate(c, wr.Source.String(), tokenResponse.AccessToken)
+
 		if err != nil {
 			return StatusError, nil, err
 		}
+
+		// If we used a cached token
+		// and get unauthorized, try
+		// getting a new token
+		if statusCode == http.StatusUnauthorized && isCached {
+			body.Close()
+			tokenResponse, tokenErr = getTokenFromEndpoint()
+			if tokenErr != nil {
+				return StatusError, nil, fmt.Errorf("failed to get new token: %w", tokenErr)
+			}
+			body, statusCode, header, err = FetchSourceHTMLPrivate(c, wr.Source.String(), tokenResponse.AccessToken)
+			if err != nil {
+				return StatusError, nil, err
+			}
+		}
+
 	}
 	defer body.Close()
 
