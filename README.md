@@ -1,7 +1,8 @@
 # Mausul
 
 Mauul is a Webmentions implementation in Go,
-compliant with the [W3C Webmentions Spec](https://www.w3.org/TR/webmention/).
+compliant with the [W3C Webmentions](https://www.w3.org/TR/webmention/)
+and [IndieWeb Private Webmentions](https://indieweb.org/Private-Webmention) specifications.
 
 ## Why
 
