@@ -14,7 +14,7 @@ I have specific requirements:
 - Small binary and container image sizes
 - Podman support
 - A service that takes advantage of SystemD Socket
-  Activation (not just start-up, but actually exit
+  Activation (not just start-up, but actually exits
   as well on idle)
 
 ## Installation
