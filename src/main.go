@@ -20,11 +20,13 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/coreos/go-systemd/v22/activation"
 	"golang.org/x/time/rate"
 )
 
@@ -35,7 +37,7 @@ type App struct {
 	workersWg   sync.WaitGroup
 }
 
-func serve_common_setup(c *WebmentionsConfig) (*App, *http.Server, error) {
+func serve(c *WebmentionsConfig) {
 	db, err := InitDB(c.DbPath)
 	if err != nil {
 		log.Fatalf("failed to initialize database: %v", err)
@@ -55,7 +57,32 @@ func serve_common_setup(c *WebmentionsConfig) (*App, *http.Server, error) {
 		Handler: idleWatcher.Middleware(mux),
 	}
 	go idleWatcher.StartWatchdog(context.Background(), server)
-	return app, server, nil
+
+	listeners, err := activation.Listeners()
+	if err != nil {
+		panic(err)
+	}
+	if len(listeners) == 0 {
+		panic("No socket activation fds found")
+	}
+	log.Println("Server started on socket activation fd")
+	var wg sync.WaitGroup
+	for _, l := range listeners {
+		defer l.Close()
+		wg.Add(1)
+		go func(listener net.Listener) {
+			defer wg.Done()
+			if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+				log.Printf("server failed: %v", err)
+			}
+		}(l)
+	}
+
+	wg.Wait()
+
+	log.Println("Server HTTP listener closed, waiting for background workers to complete...")
+	app.workersWg.Wait()
+	log.Println("Server exited cleanly on idle")
 }
 
 func revalidate(c *WebmentionsConfig) {
@@ -145,10 +172,7 @@ func main() {
 
 	switch mode {
 	case "serve":
-		err := serve(c)
-		if err != nil {
-			log.Fatalf("Failed to serve: %v", err)
-		}
+		serve(c)
 	case "revalidate":
 		revalidate(c)
 	case "dump-config":
