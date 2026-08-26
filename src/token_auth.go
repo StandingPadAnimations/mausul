@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -32,32 +31,31 @@ type TokenResponse struct {
 	ReceivedAt  time.Time
 }
 
-var linkHeaderRegex = regexp.MustCompile(`<([^>]+)>;\s*rel=["']?([^"';]+)["']?`)
-
 func ParseTokenEndpoint(linkHeader string, baseURL *url.URL) (string, error) {
 	if linkHeader == "" {
 		return "", fmt.Errorf("no Link header found")
 	}
 
-	for _, link := range strings.Split(linkHeader, ",") {
-		matches := linkHeaderRegex.FindStringSubmatch(strings.TrimSpace(link))
-		if len(matches) == 3 {
-			rawURL := matches[1]
-			rels := strings.Fields(matches[2])
-
-			for _, rel := range rels {
-				if rel == "token_endpoint" {
-					resolved, err := baseURL.Parse(rawURL)
-					if err != nil {
-						return "", fmt.Errorf("failed to parse token endpoint URL: %w", err)
-					}
-					return resolved.String(), nil
-				}
-			}
-		}
+	links, err := parseLinkHeader(linkHeader)
+	if err != nil {
+		return "", err
 	}
 
-	return "", fmt.Errorf("rel=\"token_endpoint\" not found in Link header")
+	for _, link := range links {
+		relVal, ok := link.Attrs["rel"]
+		if !ok {
+			continue
+		}
+		if relVal == "token_endpoint" {
+			parsedHref, err := url.Parse(link.Href)
+			if err != nil {
+				return "", err
+			}
+			finalURL := baseURL.ResolveReference(parsedHref)
+			return finalURL.String(), nil
+		}
+	}
+	return "", fmt.Errorf("no token_endpoint link found")
 }
 
 func ExchangeCodeForToken(client *http.Client, tokenEndpoint string, code string) (*TokenResponse, error) {

@@ -217,9 +217,9 @@ func VerifyWebmention(c *WebmentionsConfig, wr *WebmentionRequest, db *sql.DB) (
 	}
 
 	var tokenResponse *TokenResponse
+	var tokenErr error
 	if statusCode == http.StatusUnauthorized && IsPrivate(wr) {
 		body.Close()
-
 		// Get the token endpoint always
 		// just in case we need to try getting
 		// a new token after an issue with
@@ -230,7 +230,7 @@ func VerifyWebmention(c *WebmentionsConfig, wr *WebmentionRequest, db *sql.DB) (
 			return StatusError, nil, fmt.Errorf("failed to discover token endpoint: %w", endpointErr)
 		}
 
-		isCached := true
+		isCached := false
 		getTokenFromEndpoint := func() (*TokenResponse, error) {
 			client := safeHTTPClient(c)
 			res, err := ExchangeCodeForToken(client, tokenEndpoint, wr.Code)
@@ -241,28 +241,41 @@ func VerifyWebmention(c *WebmentionsConfig, wr *WebmentionRequest, db *sql.DB) (
 			return res, err
 		}
 
-		var tokenErr error
-		tokenResponse, tokenErr = GetToken(context.Background(), db, wr.Realm)
+		// First try to get a previously
+		// cached token, _if_ the realm
+		// is not an empty string.
+		if wr.Realm != "" {
+			tokenResponse, tokenErr = GetToken(context.Background(), db, wr.Realm)
+			isCached = true
 
-		// If we get an error, assume
-		// the token is expired or invalid,
-		// or otherwise isn't present, and
-		// receive a new token.
-		if tokenErr != nil {
+			// If we get an error, assume
+			// the token is expired or invalid,
+			// and try to receive a new token.
+			if tokenErr != nil {
+				tokenResponse, tokenErr = getTokenFromEndpoint()
+				if tokenErr != nil {
+					return StatusError, nil, fmt.Errorf("failed to get new token: %w", tokenErr)
+				}
+			}
+		} else {
 			tokenResponse, tokenErr = getTokenFromEndpoint()
 			if tokenErr != nil {
 				return StatusError, nil, fmt.Errorf("failed to get new token: %w", tokenErr)
 			}
 		}
 		body, statusCode, header, err = FetchSourceHTMLPrivate(c, wr.Source.String(), tokenResponse.AccessToken)
-
 		if err != nil {
 			return StatusError, nil, err
 		}
 
 		// If we used a cached token
 		// and get unauthorized, try
-		// getting a new token
+		// getting a new token. This
+		// SHOULD only run if and only
+		// if the previous attempt used
+		// a cached token, as attempting
+		// to use the sent code twice
+		// could lead to issues.
 		if statusCode == http.StatusUnauthorized && isCached {
 			body.Close()
 			tokenResponse, tokenErr = getTokenFromEndpoint()
@@ -276,8 +289,8 @@ func VerifyWebmention(c *WebmentionsConfig, wr *WebmentionRequest, db *sql.DB) (
 		}
 
 	}
-	defer body.Close()
 
+	defer body.Close()
 	if statusCode != http.StatusOK {
 		return StatusError, nil, fmt.Errorf("Source returned status %d", statusCode)
 	}
@@ -291,7 +304,5 @@ func VerifyWebmention(c *WebmentionsConfig, wr *WebmentionRequest, db *sql.DB) (
 	if hasLink {
 		return StatusKeep, tokenResponse, nil
 	}
-
-	// Page exists, target link not present on page
 	return StatusDelete, nil, nil
 }
