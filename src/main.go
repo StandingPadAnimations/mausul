@@ -26,7 +26,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coreos/go-systemd/v22/activation"
 	"golang.org/x/time/rate"
 )
 
@@ -58,27 +57,16 @@ func serve(c *WebmentionsConfig) {
 	}
 	go idleWatcher.StartWatchdog(context.Background(), server)
 
-	listeners, err := activation.Listeners()
+	f := os.NewFile(3, "systemd socket")
+	listener, err := net.FileListener(f)
 	if err != nil {
-		panic(err)
-	}
-	if len(listeners) == 0 {
-		panic("No socket activation fds found")
-	}
-	log.Println("Server started on socket activation fd")
-	var wg sync.WaitGroup
-	for _, l := range listeners {
-		defer l.Close()
-		wg.Add(1)
-		go func(listener net.Listener) {
-			defer wg.Done()
-			if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
-				log.Printf("server failed: %v", err)
-			}
-		}(l)
+		log.Fatalf("failed to create listener from systemd socket: %v", err)
 	}
 
-	wg.Wait()
+	log.Println("Server started on socket activation fd")
+	if err := server.Serve(listener); err != http.ErrServerClosed {
+		log.Fatalf("server failed: %v", err)
+	}
 
 	log.Println("Server HTTP listener closed, waiting for background workers to complete...")
 	app.workersWg.Wait()
