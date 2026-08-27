@@ -53,36 +53,33 @@ var mentionsTmpl = template.Must(template.New("mentions").Parse(`
 {{- end -}}
 `))
 
-func (a *App) getWebmentionsHandler(w http.ResponseWriter, r *http.Request) {
+func (a *App) getWebmentionsCommon(w http.ResponseWriter, r *http.Request) (*url.URL, bool) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
+		return nil, false
 	}
 
 	rawTarget := r.URL.Query().Get("target")
 	if rawTarget == "" {
 		http.Error(w, "Query parameter 'target' is required", http.StatusBadRequest)
-		return
+		return nil, false
 	}
 
 	targetURL, err := parseAndValidateURL(rawTarget)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Invalid target URL: %v", err), http.StatusBadRequest)
-		return
+		return nil, false
 	}
 
 	if !IsAllowedTarget(a.c, targetURL) {
 		http.Error(w, fmt.Sprintf("Target URL %s is not allowed.", targetURL.String()), http.StatusBadRequest)
-		return
+		return nil, false
 	}
 
-	// NO PRIVATE WEBMENTIONS
-	mentions, err := GetWebmentionsByTarget(r.Context(), a.db, targetURL.String(), false)
-	if err != nil {
-		http.Error(w, "Failed to retrieve webmentions", http.StatusInternalServerError)
-		return
-	}
+	return targetURL, true
+}
 
+func (a *App) constructWebmentionsHTML(w http.ResponseWriter, mentions []*Webmention) {
 	var viewItems []WebmentionView
 	for _, m := range mentions {
 		displayLabel := m.Source
@@ -104,6 +101,41 @@ func (a *App) getWebmentionsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to render template", http.StatusInternalServerError)
 		return
 	}
+}
+
+func (a *App) getWebmentionsHandler(w http.ResponseWriter, r *http.Request) {
+	targetURL, ok := a.getWebmentionsCommon(w, r)
+	if !ok {
+		return
+	}
+
+	// WARN: NO PRIVATE WEBMENTIONS
+	mentions, err := GetWebmentionsByTarget(r.Context(), a.db, targetURL.String(), false)
+	if err != nil {
+		http.Error(w, "Failed to retrieve webmentions", http.StatusInternalServerError)
+		return
+	}
+	a.constructWebmentionsHTML(w, mentions)
+}
+
+func (a *App) getPrivateWebmentionsHandler(w http.ResponseWriter, r *http.Request) {
+	if !a.c.AllowPrivateMentions {
+		http.Error(w, "Private webmentions are not allowed.", http.StatusForbidden)
+		return
+	}
+
+	targetURL, ok := a.getWebmentionsCommon(w, r)
+	if !ok {
+		return
+	}
+
+	// PRIVATE WEBMENTIONS
+	mentions, err := GetWebmentionsByTarget(r.Context(), a.db, targetURL.String(), true)
+	if err != nil {
+		http.Error(w, "Failed to retrieve webmentions", http.StatusInternalServerError)
+		return
+	}
+	a.constructWebmentionsHTML(w, mentions)
 }
 
 func (a *App) webmentionHandler(w http.ResponseWriter, r *http.Request) {

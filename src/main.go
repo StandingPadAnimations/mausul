@@ -36,6 +36,12 @@ type App struct {
 	workersWg   sync.WaitGroup
 }
 
+const WebmentionRateLimit = 6 * time.Second
+const WebmentionBurst = 3
+
+const GetWebmentionsRateLimit = 1 * time.Second
+const GetWebmentionsBurst = 10
+
 func serve(c *WebmentionsConfig) {
 	db, err := InitDB(c.DbPath)
 	if err != nil {
@@ -46,11 +52,16 @@ func serve(c *WebmentionsConfig) {
 	app := &App{db: db, c: c, idleWatcher: idleWatcher}
 
 	mux := http.NewServeMux()
-	webmentionLimiter := newIPRateLimiter(rate.Every(6*time.Second), 3)
+	webmentionLimiter := newIPRateLimiter(rate.Every(WebmentionRateLimit), WebmentionBurst)
 	mux.HandleFunc("/webmention", webmentionLimiter.limitMiddleware(app.webmentionHandler))
 
-	getwebmentionsLimiter := newIPRateLimiter(rate.Every(1*time.Second), 10)
-	mux.HandleFunc("/get_webmentions", getwebmentionsLimiter.limitMiddleware(app.getWebmentionsHandler))
+	getWebmentionsLimiter := newIPRateLimiter(rate.Every(GetWebmentionsRateLimit), GetWebmentionsBurst)
+	mux.HandleFunc("/get_webmentions", getWebmentionsLimiter.limitMiddleware(app.getWebmentionsHandler))
+
+	// WARN: This must be secured in the reverse
+	// proxy layer!
+	getPrivateWebmentionsLimiter := newIPRateLimiter(rate.Every(GetWebmentionsRateLimit), GetWebmentionsBurst)
+	mux.HandleFunc("/get_private_webmentions", getPrivateWebmentionsLimiter.limitMiddleware(app.getPrivateWebmentionsHandler))
 
 	server := &http.Server{
 		Handler: idleWatcher.Middleware(mux),
