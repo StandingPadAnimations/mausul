@@ -69,7 +69,7 @@ func serve(c *WebmentionsConfig) {
 		ReadTimeout:       5 * time.Second,
 		WriteTimeout:      10 * time.Second,
 		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    1024, // 1MiB
+		MaxHeaderBytes:    1 << 20, // 1MiB
 	}
 	go idleWatcher.StartWatchdog(context.Background(), server)
 
