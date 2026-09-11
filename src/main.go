@@ -65,10 +65,11 @@ func serve(c *WebmentionsConfig) {
 
 	server := &http.Server{
 		Handler:           idleWatcher.Middleware(mux),
+		ReadHeaderTimeout: 2 * time.Second,
 		ReadTimeout:       5 * time.Second,
 		WriteTimeout:      10 * time.Second,
 		IdleTimeout:       120 * time.Second,
-		ReadHeaderTimeout: 2 * time.Second,
+		MaxHeaderBytes:    1024, // 1MiB
 	}
 	go idleWatcher.StartWatchdog(context.Background(), server)
 
