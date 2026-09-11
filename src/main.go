@@ -64,7 +64,11 @@ func serve(c *WebmentionsConfig) {
 	mux.HandleFunc("/get_private_webmentions", getPrivateWebmentionsLimiter.limitMiddleware(app.getPrivateWebmentionsHandler))
 
 	server := &http.Server{
-		Handler: idleWatcher.Middleware(mux),
+		Handler:           idleWatcher.Middleware(mux),
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		ReadHeaderTimeout: 2 * time.Second,
 	}
 	go idleWatcher.StartWatchdog(context.Background(), server)
 
