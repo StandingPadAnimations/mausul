@@ -6,14 +6,15 @@ Requires=mausul.socket
 [Container]
 Image=mausul:latest
 EnvironmentFile=%h/mausul.env
+Environment=GOMEMLIMIT=450MiB
 Volume=%h/webmentions:/webmentions:z
 
 [Service]
 Restart=on-failure
 RestartSec=5
 
-MemoryHigh=96M
-MemoryMax=128M
+MemoryHigh=128M
+MemoryMax=450M
 CPUQuota=100%
 TasksMax=32
 

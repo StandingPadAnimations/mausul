@@ -5,9 +5,10 @@ Description=Mausul revalidation service
 Type=oneshot
 ExecStart=%h/mausul revalidate
 EnvironmentFile=%h/mausul.env
+Environment="GOMEMLIMIT=450MiB"
 Restart=no
 
-MemoryHigh=96M
-MemoryMax=128M
+MemoryHigh=128M
+MemoryMax=450M
 CPUQuota=100%
 TasksMax=32

@@ -6,11 +6,12 @@ Requires=mausul.socket
 [Service]
 ExecStart=%h/mausul
 EnvironmentFile=%h/mausul.env
+Environment="GOMEMLIMIT=450MiB"
 Restart=on-failure
 RestartSec=5
 
-MemoryHigh=96M
-MemoryMax=128M
+MemoryHigh=128M
+MemoryMax=450M
 CPUQuota=100%
 TasksMax=32
 
